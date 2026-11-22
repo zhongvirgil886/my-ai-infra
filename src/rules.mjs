@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { hash } from './fs.mjs';
+import { hash, safe } from './fs.mjs';
 import { snapshot, equalEntry } from './entries.mjs';
 import { legacyRuleActions } from './legacy-instructions.mjs';
 
@@ -18,6 +18,21 @@ const initialization = {
   mcode: '在项目目录启动 MiniMax Code，在会话中执行 /init 补全根目录 AGENTS.md；若提示文件已存在，请让它根据真实代码补全。',
   copilot: '在项目目录执行 copilot init，或在 Copilot CLI 会话中执行 /init，补全 .github/copilot-instructions.md。',
 };
+// Installer namespaces, tool directories and internal files never act as project-maintained rule sources.
+const RESERVED_RULE_SOURCES = ['.agents', '.my-ai-infra', '.my-ai-infra.json', '.gitignore', '.git', '.codex', '.claude', '.cursor', '.copilot', '.minimax', '.github/skills', '.github/agents', '.github/prompts', '.github/instructions'];
+// A rule entry may link to a regular, non-empty text file maintained by the project (e.g. AGENTS.md -> docs/agent-rules.md).
+// The target must stay inside the root without traversing any symlink; otherwise the link remains unknown.
+export async function projectRuleSource(root, entry, before) {
+  if (before?.kind !== 'symlink' || typeof before.target !== 'string' || path.isAbsolute(before.target) || path.posix.isAbsolute(before.target) || before.target.includes('\\')) return null;
+  const source = path.posix.normalize(path.posix.join(path.posix.dirname(entry), before.target));
+  if (source === '.' || source === '..' || source.startsWith('../') || source.startsWith('.my-ai-infra-recovery-')) return null;
+  if (RULES.some(rule => rule.entry === source) || RESERVED_RULE_SOURCES.some(reserved => source === reserved || source.startsWith(reserved + '/'))) return null;
+  try {
+    await safe(root, source);
+    const text = await snapshot(root, source);
+    return text?.kind === 'file' && text.text.trim() ? { path: source, before: text } : null;
+  } catch { return null; }
+}
 export const ruleInitialization = (tool, shared) => initialization[tool] + (shared ? ' AGENTS.md 与 CLAUDE.md 共用 AGENTS.md 唯一内容源，补全一次即可。' : '') + ' 请通过现有软链接写入，保留链接；完成后通过本工具再次同步并检查入口，沿用本次个人库和项目配置。';
 
 export async function ruleActions(root, tools, oldFiles, inspect = relative => snapshot(root, relative)) {
@@ -33,6 +48,13 @@ export async function ruleActions(root, tools, oldFiles, inspect = relative => s
     || oldFiles[claude.entry]?.kind === 'symlink' && oldFiles[claude.entry].target === sharedTarget
     || claudeEntry === null && claudeSource === null;
   const needsSharedAgents = sharedClaude && (claudeEntry !== null || tools.includes('claudecode'));
+  let agentsProject = null;
+  try { agentsProject = await projectRuleSource(root, 'AGENTS.md', await inspect('AGENTS.md')); } catch { /* The loop reports unreadable entries. */ }
+  // Project-maintained sources are read for discovery only; they are never written or recorded as installed files.
+  const keepProjectSource = source => {
+    if (!actions.has(source.path)) actions.set(source.path, { path: source.path, action: 'preserve', before: source.before, after: source.before, projectRule: true, note: '项目自行维护的规则正文，安装器只读取、不改写' });
+  };
+  const sharedLinks = [sharedTarget, '.agents/assets/rules/AGENTS.md'];
   let migratedOldSource = false;
   for (const rule of RULES) {
     const source = rule.entry === 'CLAUDE.md' && sharedClaude ? SHARED_RULE_SOURCE : rule.source;
@@ -44,6 +66,30 @@ export async function ruleActions(root, tools, oldFiles, inspect = relative => s
       sourceBefore = await inspect(source);
     } catch (error) {
       actions.set(rule.entry, { path: rule.entry, action: 'conflict', before: null, after: null, reason: `规则路径无法安全读取：${error.message}` });
+      continue;
+    }
+    const own = await projectRuleSource(root, rule.entry, before);
+    if (own) {
+      keepProjectSource(own);
+      actions.set(rule.entry, { path: rule.entry, action: 'noop', before, after: before, projectRule: true, note: `保留项目规则链接，内容源为 ${own.path}` });
+      continue;
+    }
+    if (rule.entry === 'CLAUDE.md' && sharedClaude && agentsProject && (before === null || before.kind === 'file' || before.kind === 'symlink' && sharedLinks.includes(before.target))) {
+      // CLAUDE.md shares whatever AGENTS.md uses, including a project-maintained file.
+      if (before === null && !tools.includes('claudecode')) continue;
+      keepProjectSource(agentsProject);
+      const after = { kind: 'symlink', target: ruleTarget(rule, agentsProject.path) };
+      let body = '';
+      if (before?.kind === 'symlink') {
+        const linked = await inspect(before.target === sharedTarget ? SHARED_RULE_SOURCE : '.agents/assets/rules/AGENTS.md');
+        if (linked && linked.kind !== 'file') { actions.set(rule.entry, { path: rule.entry, action: 'conflict', before, after, ruleSource: agentsProject.path, projectRule: true, reason: `CLAUDE.md 当前链接的中心规则不是普通文本文件，请先核对后改为链接 ${agentsProject.path}` }); continue; }
+        body = linked?.text || '';
+      } else if (before) body = (cleaned ? cleaned.after : before)?.text || '';
+      if (body.trim() && body !== agentsProject.before.text) {
+        actions.set(rule.entry, { path: rule.entry, action: 'conflict', before, after, ruleSource: agentsProject.path, projectRule: true, reason: `CLAUDE.md 当前内容与 AGENTS.md 链接的项目规则 ${agentsProject.path} 不同，请先合并到 ${agentsProject.path} 再重试；两份内容均已保留` });
+        continue;
+      }
+      actions.set(rule.entry, { path: rule.entry, action: equalEntry(before, after) ? 'noop' : before === null ? 'create' : 'update', before, after, projectRule: true, note: `与 AGENTS.md 共用项目规则 ${agentsProject.path}` });
       continue;
     }
     const plannedSource = actions.get(source);
@@ -58,6 +104,8 @@ export async function ruleActions(root, tools, oldFiles, inspect = relative => s
     const conflict = reason => {
       if (!actions.has(source)) actions.set(source, { path: source, action: sourceBefore === null ? 'create' : 'preserve', before: sourceBefore, after: { kind: 'file', text: sourceBefore?.text || '' } });
       actions.set(rule.entry, { path: rule.entry, action: 'conflict', before, after: { kind: 'symlink', target }, ruleSource: source, reason });
+      // merge/replace install this link; record it so the next plan sees a consistent state.
+      nextFiles[rule.entry] = { kind: 'symlink', target, hash: hash(target) };
     };
     if (sourceBefore && sourceBefore.kind !== 'file') {
       actions.set(source, { path: source, action: 'conflict', before: sourceBefore, after: { kind: 'file', text: before?.kind === 'file' ? before.text : actions.get(source)?.after?.text || '' }, reason: '中心运行规则必须是普通文本文件' });

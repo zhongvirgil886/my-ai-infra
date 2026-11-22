@@ -286,6 +286,8 @@ export async function plan(home, project, override, options = {}) {
   for (const issue of inspection.dependencies.values()) { const action = actions.find(action => action.path === issue.path); if (action) Object.assign(action,issue); else actions.push(issue); }
   const resolved = resolveConflicts(actions, nextFiles, policy, desired);
   for (const action of actions) if (action.resolution === 'skip' && old.files[action.path]) nextFiles[action.path] = old.files[action.path];
+  // Links to project-maintained rule files belong to the project and stay out of the install record.
+  for (const action of actions) if (action.projectRule) delete nextFiles[action.path];
   const stateAction = actions.find(action => action.internalState);
   stateAction.after = { kind: 'file', text: json({ version: 4, files: Object.fromEntries(Object.entries(nextFiles).sort(([a],[b])=>a.localeCompare(b))) }) };
   if (stateAction.action !== 'conflict' && stateAction.resolution !== 'skip') stateAction.action = equalEntry(rawState,stateAction.after) ? 'noop' : rawState === null ? 'create' : 'update';

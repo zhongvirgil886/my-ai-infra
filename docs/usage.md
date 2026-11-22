@@ -129,6 +129,8 @@ MiniMax Code 拒绝软链接的 `SKILL.md`，因此它的入口是整个 Skill �
 
 项目规则正文由项目作者维护，不注入 SDD 正文或共享流程引用。已有不同正文的 AGENTS.md、CLAUDE.md 和 Copilot 原生规则分别备份、迁移到 .agents/rules/ 下的独立文件，原入口改为相对软链接。已有根规则即使对应工具未选中也迁移。新建 CLAUDE.md 时，AGENTS.md 是唯一内容源，两个根入口都直接链接 .agents/rules/AGENTS.md；只选 Claude Code 也创建此中心文件和 AGENTS.md 入口，后续新增 Claude Code 同样复用已有 AGENTS.md。未选 Claude Code 时不新建 CLAUDE.md；Copilot 对应 .github/copilot-instructions.md，继续独立管理。切换偏好保留已有规则与入口，删除安装记录后也能识别并保留共享关系。
 
+项目自行维护的规则文件可以直接作为内容源，例如 Git 跟踪的 `AGENTS.md` → `docs/agent-rules.md`。根规则入口是相对软链接，目标解析后位于项目根目录内、路径上没有任何软链接，且是非空的普通文本文件时，安装器保留该入口、只读取目标正文，不创建 `.agents/rules/` 下的对应中心文件。选中 Claude Code 时，`CLAUDE.md` 链接到同一项目文件；已指向该文件的 `CLAUDE.md` 原样保留。旧版本同步后仍指向 `.agents/rules/AGENTS.md` 的 `CLAUDE.md`，在中心文件为空或与项目文件相同时改为链接项目文件；中心文件有不同正文时报告冲突，merge 改链接并保留中心文件原文。这些入口与目标文件归项目所有，不写入安装记录和 `.gitignore` 受管片段；取消 Claude Code 时只移除 `CLAUDE.md` 链接，项目文件保留。目标位于项目外、经过目录软链接、为空，或位于 `.agents/`、`.my-ai-infra/`、`.git/` 与工具专属目录时，仍按未知链接处理：plan 报告冲突，abort 保持现场，merge 改为链接中心规则且不读取或修改原目标。
+
 CLI 输出 JSON 的 nextSteps 记录空规则的初始化提示，成功应用后也在终端单独显示；Web 在预览和成功提示中显示。Codex / Claude Code 在各自会话中执行 /init；Copilot 执行 copilot init；Cursor 使用 Agent 对话补全 AGENTS.md。具体命令及官方说明见 [项目规则入口](#项目规则入口)。安装器不自动运行这些命令；doctor 健康表示安装一致，空规则仍需用户补全。
 
 通过规则软链接编辑内容会更新中心文件，sync 保留这些正文修改。如果外部工具把空规则链接替换成普通文件，sync 会将新正文归入中心文件并恢复链接；中心文件与入口均有不同非空内容时，默认 merge 保留中心正文，把入口原文归档为 local/ 候选，再恢复链接。选择 abort 时保留现场并退出 2。中心文件仍有内容而入口副本为空时，保留中心正文。
@@ -183,7 +185,7 @@ merge 以本地优先的目录合并补齐资产，同名不同正文保留候�
 - Copilot：执行 `copilot init`，或在 CLI 会话执行 `/init`（[官方命令说明](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference)）。
 - MiniMax Code：启动 `mcode` 后执行 `/init`，补全根目录 AGENTS.md（[官方文档](https://agent.minimax.cn/docs/llms.txt)）。
 
-文件已存在时，可让对应工具补全已有内容。新建的 AGENTS.md 与 CLAUDE.md 共用源，Codex、Cursor、MiniMax Code 可选一个生成原则；原有独立规则保持独立。通过现有链接写入后内容立即集中生效；如果初始化工具将空链接替换成普通文件，执行 `my-ai-infra sync --project .` 重新归入中心目录。已有两份不同的非空内容时，先合并差异后再同步。
+文件已存在时，可让对应工具补全已有内容。新建的 AGENTS.md 与 CLAUDE.md 共用源，Codex、Cursor、MiniMax Code 可选一个生成原则；原有独立规则保持独立。根入口链接到项目内非空规则文件（如 `docs/agent-rules.md`）时，该文件就是内容源，直接编辑它即可，详见 [单一内容源与已有项目兼容](#单一内容源与已有项目兼容)。通过现有链接写入后内容立即集中生效；如果初始化工具将空链接替换成普通文件，执行 `my-ai-infra sync --project .` 重新归入中心目录。已有两份不同的非空内容时，先合并差异后再同步。
 
 ## 初始化冲突处理
 
