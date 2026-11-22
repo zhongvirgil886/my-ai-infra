@@ -84,7 +84,11 @@ export async function ruleActions(root, tools, oldFiles, inspect = relative => s
         const linked = await inspect(before.target === sharedTarget ? SHARED_RULE_SOURCE : '.agents/assets/rules/AGENTS.md');
         if (linked && linked.kind !== 'file') { actions.set(rule.entry, { path: rule.entry, action: 'conflict', before, after, ruleSource: agentsProject.path, projectRule: true, reason: `CLAUDE.md 当前链接的中心规则不是普通文本文件，请先核对后改为链接 ${agentsProject.path}` }); continue; }
         body = linked?.text || '';
-      } else if (before) body = (cleaned ? cleaned.after : before)?.text || '';
+      } else if (before) {
+        // Legacy cleanup may already have planned this entry; read its cleaned text.
+        const legacyCleaned = actions.get(rule.entry);
+        body = (legacyCleaned ? legacyCleaned.after : before)?.text || '';
+      }
       if (body.trim() && body !== agentsProject.before.text) {
         actions.set(rule.entry, { path: rule.entry, action: 'conflict', before, after, ruleSource: agentsProject.path, projectRule: true, reason: `CLAUDE.md 当前内容与 AGENTS.md 链接的项目规则 ${agentsProject.path} 不同，请先合并到 ${agentsProject.path} 再重试；两份内容均已保留` });
         continue;

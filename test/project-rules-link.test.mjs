@@ -90,6 +90,31 @@ test('a CLAUDE.md left on the empty central source by an older sync follows the 
   await assertHealthy(home, project);
 });
 
+test('a shared CLAUDE.md replaced by a regular file joins the project link or reports a conflict', async t => {
+  const legacyState = shared => json({ version: 4, files: Object.fromEntries(['AGENTS.md', 'CLAUDE.md'].map(file => [file, { kind: 'symlink', target: shared, hash: hash(shared) }])) });
+  {
+    const { home, project } = await fixture(t);
+    await write(project, 'CLAUDE.md', rules);
+    await write(project, '.my-ai-infra.json', json(both));
+    await write(project, '.my-ai-infra/state.json', legacyState('.agents/rules/AGENTS.md'));
+    const preview = await plan(home, project, undefined, { conflict: 'abort' });
+    assert.deepEqual(preview.conflicts, []);
+    await apply(home, project, undefined, preview.revision, { conflict: 'abort' });
+    assert.equal(await link(project, 'CLAUDE.md'), 'docs/agent-rules.md');
+    await assertHealthy(home, project);
+  }
+  {
+    const { home, project } = await fixture(t);
+    await write(project, 'CLAUDE.md', '# Written by /init\n');
+    await write(project, '.my-ai-infra.json', json(both));
+    await write(project, '.my-ai-infra/state.json', legacyState('.agents/rules/AGENTS.md'));
+    const preview = await plan(home, project, undefined, { conflict: 'abort' });
+    assert.deepEqual(preview.conflicts.map(item => item.path), ['CLAUDE.md']);
+    await assert.rejects(apply(home, project, undefined, undefined, { conflict: 'abort' }), error => error.exitCode === 2);
+    assert.equal(await fs.readFile(path.join(project, 'CLAUDE.md'), 'utf8'), '# Written by /init\n');
+  }
+});
+
 test('a shared CLAUDE.md with different central content is a conflict; merge keeps both texts', async t => {
   const { home, project } = await fixture(t);
   await write(project, '.agents/rules/AGENTS.md', '# Central notes\n');
