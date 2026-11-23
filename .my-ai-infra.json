@@ -1,7 +1,8 @@
 {
   "version": 1,
   "tools": [
-    "codex"
+    "codex",
+    "claudecode"
   ],
   "skills": [
     "my-create-feature",
@@ -11,6 +12,8 @@
     "my-create-test-plan",
     "my-implement-code",
     "my-review-code",
-    "my-ai-infra"
+    "my-ai-infra",
+    "project-save",
+    "project-load"
   ]
 }
