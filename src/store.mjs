@@ -36,7 +36,14 @@ export function metadata(text, name) {
       for (const line of lines) { if (line && !/^[ \t]/.test(line)) break; block.push(line.trim()); }
       return block.join(raw.startsWith('>') ? ' ' : '\n').trim();
     }
-    return raw;
+    // Plain multi-line scalar: indented continuation lines fold with spaces; blank lines become newlines.
+    let text = raw;
+    for (const line of front.slice(match.index + match[0].length).split(/\r?\n/).slice(1)) {
+      if (line.trim() && !/^[ \t]/.test(line)) break;
+      const part = line.trim();
+      text = !part ? text + '\n' : !text || text.endsWith('\n') ? text + part : `${text} ${part}`;
+    }
+    return text.trim();
   };
   const description = value('description');
   if (!front || value('name') !== name || !description.trim()) throw Error(`Invalid Skill metadata: ${name}`);
@@ -350,7 +357,8 @@ export async function saveAsset(home, name, text, revision, type = 'skills') {
     return { revision: hash(text), origin: 'personal', skillMigrations: seeded.skillMigrations };
   });
 }
-export async function importAsset(home, source, type = 'skills') {
+export async function importAsset(home, source, type = 'skills', { replace = false } = {}) {
+  if (replace && type !== 'skills') throw Error('--replace only supports Skills');
   if (type !== 'skills') return importTypedAsset(home,source,type);
   source = await fs.realpath(source);
   const name = skillName(path.basename(source));
@@ -364,15 +372,25 @@ export async function importAsset(home, source, type = 'skills') {
   for (const relative of entries) contents.set(relative, await read(source, relative));
   return locked(home, async () => {
     const seeded = await seed(home);
-    if (await stat(await safe(home, `assets/skills/${name}`))) throw Error(`Skill already exists: ${name}`);
+    const destination = await safe(home, `assets/skills/${name}`);
+    const existing = await stat(destination);
+    if (existing && !replace) throw Error(`Skill already exists: ${name}; use --replace to refresh it from the source`);
+    if (existing && !existing.isDirectory()) throw Error(`Invalid personal Skill directory: ${name}`);
     const staging = `imports/${randomUUID()}`;
+    let backup = null;
     try {
       for (const [relative, text] of contents) await write(home, `${staging}/${relative}`, text);
-      const destination = await safe(home, `assets/skills/${name}`);
       await fs.mkdir(path.dirname(destination), { recursive: true });
-      await fs.rename(await safe(home, staging), destination);
+      if (existing) {
+        // Keep the complete previous directory; restore it if the swap fails.
+        backup = await safe(home, `backups/import-${Date.now()}-${randomUUID()}/${name}`);
+        await fs.mkdir(path.dirname(backup), { recursive: true });
+        await fs.rename(destination, backup);
+      }
+      try { await fs.rename(await safe(home, staging), destination); }
+      catch (error) { if (backup) await fs.rename(backup, destination); throw error; }
     } finally { await fs.rm(await safe(home, staging), { recursive: true, force: true }); }
-    return { imported: name, origin: 'personal', files: entries.length, skillMigrations: seeded.skillMigrations };
+    return { imported: name, origin: 'personal', files: entries.length, ...(backup ? { replaced: true, backup } : {}), skillMigrations: seeded.skillMigrations };
   });
 }
 

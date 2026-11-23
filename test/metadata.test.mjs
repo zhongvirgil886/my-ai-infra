@@ -32,3 +32,17 @@ test('quoted personal Skill import and edit preserve metadata and third-party at
   assert.match(changed.content, /author: "original-author"/);
   assert.match(changed.content, /补充说明/);
 });
+
+test('frontmatter folds plain multi-line scalars without general YAML parsing', async t => {
+  assert.equal(metadata('---\nname: my-example\ndescription:\n  第一行说明，\n  第二行说明。\nmetadata:\n  author: other\n---\n', 'my-example'), '第一行说明， 第二行说明。');
+  assert.equal(metadata('---\nname: my-example\ndescription: Starts here\n\tand continues\n\n  after a blank line\n\nlicense: MIT\n---\n', 'my-example'), 'Starts here and continues\nafter a blank line');
+  assert.equal(metadata('---\nname: my-example\ndescription: single line\nmetadata:\n  author: other\n---\n', 'my-example'), 'single line');
+  assert.throws(() => metadata('---\nname: my-example\ndescription:\nmetadata:\n  author: other\n---\n', 'my-example'), /Invalid Skill metadata/);
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'my-ai-metadata-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const source = path.join(root, 'web-access'), home = path.join(root, 'personal');
+  await fs.mkdir(source);
+  await fs.writeFile(path.join(source, 'SKILL.md'), '---\nname: web-access\ndescription:\n  访问网页，\n  并提取正文。\n---\n\n正文。\n');
+  await importAsset(home, source);
+  assert.equal((await catalog(home)).find(a => a.name === 'web-access').description, '访问网页， 并提取正文。');
+});

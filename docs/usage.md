@@ -25,7 +25,7 @@ Esc、关闭按钮和遮罩可关闭预览，返回配置继续调整；正在�
 | `defaults` | 查看或修改新项目默认项 | `--tools` |
 | `setup` | 安装/更新全局入口 | `--tools`、`--yes` |
 | `upgrade` | 更新内置 runtime，保留个人资产 | `--home` |
-| `asset import PATH` | 导入文本 Skill 包 | `--home` |
+| `asset import PATH` | 导入文本 Skill 包 | `--replace`、`--home` |
 | `asset edit NAME` | 修改正文并备份 | `--file`、`--home` |
 | `web` | 启动本地配置器 | `--project`、`--port`、`--home` |
 
@@ -56,7 +56,7 @@ my-ai-infra web --project "/path/to/my repo" --home "/path/to/personal assets" -
 
 工具与 Skill 列表不能为空。名称与兼容别名以 `catalog` 输出为准；`my-create-code` 等旧名解析到 canonical 名，不重复安装。未知配置字段会被拒绝。
 
-仅设置工具偏好时保留自动发现模式，defaults.json 用 `allSkills: true` 记录；显式设置 `--skills` 或在 Web 保存 Skill 选择时固定清单。旧 defaults.json 没有该标记时按固定清单保留。
+仅设置工具偏好时保留自动发现模式，defaults.json 用 `allSkills: true` 记录；显式设置 `--skills` 或在 Web 保存 Skill 选择时固定清单。旧 defaults.json 没有该标记时按固定清单保留，`setup` 与 `defaults --tools` 只更新工具。尚无 defaults.json 时，首次 `setup` 或 `defaults --tools` 写入自动发现模式。
 
 ## 维护个人资产
 
@@ -83,14 +83,15 @@ metadata:
 
 名称为 1–64 个小写字母、数字和单连字符，头部 name 与目录名相同。自有资产默认 `my-动作-对象`，第三方资产保留原作者与来源。`metadata.source` 记录源入口，内置资产使用 npm 包根目录的相对路径。
 
-读取器支持 JSON 兼容的双引号字符串、单引号字符串、旧版无引号及折叠/字面量多行说明；它读取必要字符串字段，不提供任意 YAML 对象解析或代码求值。文档产出用 `create`，实现用 `implement`，审查用 `review`。
+读取器支持 JSON 兼容的双引号字符串、单引号字符串、旧版无引号及折叠/字面量多行说明；无引号说明可在下一行起缩进续写，续行以空格连接，空行保留为换行；它读取必要字符串字段，不提供任意 YAML 对象解析或代码求值。文档产出用 `create`，实现用 `implement`，审查用 `review`。
 
 ```bash
 mai asset import .agents/skills/my-review-api
+mai asset import ~/src/skills/my-review-api --replace
 my-ai-infra asset edit my-review-api --file /path/to/updated-SKILL.md
 ```
 
-导入完整目录，包含 scripts、references、模板与 evals。导入与内置名称（含兼容别名）或已有个人 Skill 同名时停止，禁止覆盖。列表自动发现新增个人 Skill，无需修改 catalog/skills.json；导入后新项目按默认清单选择规则装配。个人正文编辑会校验最新摘要并备份旧内容；内置正文保存请求由服务端拒绝。正文编辑不处理附属资源，修改资源时应保留恢复副本。二进制资源和符号链接不在自定义导入范围内。Web 显示“内置 / 个人”来源；内置正文只读，个人 Skill 支持搜索、新建、正文编辑、未保存保护与 Ctrl/⌘+S；在另一页面编辑默认偏好不会同步全部项目。
+导入完整目录，包含 scripts、references、模板与 evals。导入与内置名称（含兼容别名）或已有个人 Skill 同名时停止。创作源更新后使用 `--replace` 刷新同名个人 Skill：先校验新目录，再把旧个人目录完整移到 `<home>/backups/import-<时间>-<id>/NAME/`，替换失败时恢复旧目录；内置名称和非 Skill 类型仍拒绝。已安装的项目需再执行 `mai sync` 获取新内容。列表自动发现新增个人 Skill，无需修改 catalog/skills.json；导入后新项目按默认清单选择规则装配。个人正文编辑会校验最新摘要并备份旧内容；内置正文保存请求由服务端拒绝。正文编辑不处理附属资源，修改资源时应保留恢复副本。二进制资源和符号链接不在自定义导入范围内。Web 显示“内置 / 个人”来源；内置正文只读，个人 Skill 支持搜索、新建、正文编辑、未保存保护与 Ctrl/⌘+S；在另一页面编辑默认偏好不会同步全部项目。
 
 ## 升级与恢复
 

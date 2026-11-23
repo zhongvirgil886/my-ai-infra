@@ -124,6 +124,54 @@ test('tool-only defaults keep newly imported Skills discoverable; explicit lists
   assert.equal(await read(another, '.agents/skills/team-skill/SKILL.md'), null);
   assert.equal(await read(project, '.agents/skills/team-skill/SKILL.md'), body('team-skill'));
 });
+test('setup keeps a fixed default Skill list and only updates tools', async t => {
+  const { home, source, root } = await fixture(t);
+  const cli = path.join(PACKAGE, 'bin/my-ai-infra.mjs'), toolHome = path.join(root, 'user home');
+  await fs.mkdir(toolHome);
+  const env = { ...process.env, HOME: toolHome, USERPROFILE: toolHome, MY_AI_INFRA_HOME: home };
+  await exec(process.execPath, [cli, 'setup', '--tools', 'codex', '--yes'], { env });
+  assert.equal(JSON.parse(await read(home, 'defaults.json')).allSkills, true);
+  await exec(process.execPath, [cli, 'defaults', '--skills', 'my-ai-infra,my-review-code'], { env });
+  await importAsset(home, source);
+  await exec(process.execPath, [cli, 'setup', '--tools', 'claudecode,codex', '--yes'], { env });
+  assert.deepEqual(JSON.parse(await read(home, 'defaults.json')), { version: 1, tools: ['claudecode', 'codex'], skills: ['my-ai-infra', 'my-review-code'] });
+  // A pre-flag defaults file is a fixed list too.
+  await write(home, 'defaults.json', json({ version: 1, tools: ['codex'], skills: ['team-skill'] }));
+  await exec(process.execPath, [cli, 'setup', '--tools', 'claudecode', '--yes'], { env });
+  assert.deepEqual(JSON.parse(await read(home, 'defaults.json')), { version: 1, tools: ['claudecode'], skills: ['team-skill'] });
+});
+test('import --replace refreshes a personal Skill with a complete backup and keeps refusals', async t => {
+  const { home, project, source, root } = await fixture(t);
+  const cli = path.join(PACKAGE, 'bin/my-ai-infra.mjs'), env = { ...process.env, MY_AI_INFRA_HOME: home };
+  await importAsset(home, source);
+  await write(home, 'assets/skills/team-skill/notes/local.md', 'personal note\n');
+  await exec(process.execPath, [cli, 'init', '--yes', '--project', project], { env });
+  const updated = body('team-skill').replace('My own content.', 'Updated content.');
+  await write(source, 'SKILL.md', updated);
+  await fs.rm(path.join(source, 'references'), { recursive: true });
+  await assert.rejects(exec(process.execPath, [cli, 'asset', 'import', source], { env }), /already exists.*--replace/);
+  const result = JSON.parse((await exec(process.execPath, [cli, 'asset', 'import', source, '--replace'], { env })).stdout);
+  assert.equal(result.replaced, true);
+  assert.equal(path.relative(path.join(home, 'backups'), result.backup).split(path.sep).length, 2);
+  assert.equal(await read(result.backup, 'SKILL.md'), body('team-skill'));
+  assert.equal(await read(result.backup, 'references/workflow.md'), 'Reusable workflow\n');
+  assert.equal(await read(result.backup, 'notes/local.md'), 'personal note\n');
+  assert.equal(await read(home, 'assets/skills/team-skill/SKILL.md'), updated);
+  assert.equal(await read(home, 'assets/skills/team-skill/references/workflow.md'), null);
+  assert.equal(await read(home, 'assets/skills/team-skill/notes/local.md'), null);
+  assert.equal(await read(project, '.agents/skills/team-skill/SKILL.md'), body('team-skill'));
+  await exec(process.execPath, [cli, 'sync', '--yes', '--project', project], { env });
+  assert.equal(await read(project, '.agents/skills/team-skill/SKILL.md'), updated);
+  // New names still import normally with --replace; builtins, invalid sources and other types stay refused.
+  const fresh = path.join(root, 'fresh-skill'); await write(fresh, 'SKILL.md', body('fresh-skill'));
+  assert.equal((await importAsset(home, fresh, 'skills', { replace: true })).replaced, undefined);
+  await assert.rejects(exec(process.execPath, [cli, 'asset', 'import', path.join(PACKAGE, 'assets/skills/my-review-design'), '--replace'], { env }), /read-only/);
+  await write(source, 'SKILL.md', '---\nname: other\ndescription: x\n---\n');
+  await assert.rejects(importAsset(home, source, 'skills', { replace: true }), /Invalid Skill metadata/);
+  assert.equal(await read(home, 'assets/skills/team-skill/SKILL.md'), updated);
+  await assert.rejects(importAsset(home, source, 'agents', { replace: true }), /only supports Skills/);
+  await assert.rejects(exec(process.execPath, [cli, 'asset', 'list', '--replace'], { env }), /not supported/);
+});
 test('a future bundle claiming a personal name fails before migration or runtime refresh', async t => {
   const { home, source, root } = await fixture(t);
   await importAsset(home, source);

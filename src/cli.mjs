@@ -25,7 +25,7 @@ mai upgrade [--home PATH]
 mai catalog
 mai agents
 mai asset list
-mai asset import PATH [--type skills|agents|hooks|mcp|TYPE]
+mai asset import PATH [--type skills|agents|hooks|mcp|TYPE] [--replace]
 mai asset edit NAME --file PATH [--type TYPE]
 mai web [--project PATH] [--port 4317]
 mai memory bind [--project PATH] [--project-id ID|new]
@@ -44,7 +44,7 @@ mai 与 my-ai-infra 共用全部命令和选项。
 项目路径必须已存在。未指定路径时使用当前目录。
 交互初始化使用 ↑/↓ 移动、空格多选、Enter 确认工具；未保存固定清单时默认安装全部 Skill。
 非交互环境沿用已保存工具偏好（初始为 Codex）。
-所有内置资产随发行更新且只读；init / sync 使用当前包，个人资产同名拒绝覆盖。
+所有内置资产随发行更新且只读；init / sync 使用当前包，个人资产同名拒绝覆盖；asset import --replace 备份后刷新同名个人 Skill。
 upgrade 更新本地 runtime 并迁移旧内置副本；同步项目仍需显式执行 sync。
 Web 必须通过本地命令启动，不能直接打开 HTML 文件。`;
 
@@ -54,7 +54,7 @@ function parse(args) {
     const arg = ({ '-h': '--help', '-v': '--version' })[args[i]] || args[i];
     if (!arg.startsWith('--')) { positionals.push(arg); continue; }
     const equal = arg.indexOf('='), name = arg.slice(2, equal < 0 ? undefined : equal);
-    if (['yes', 'dry-run', 'help', 'version'].includes(name)) {
+    if (['yes', 'dry-run', 'help', 'version', 'replace'].includes(name)) {
       if (equal >= 0) throw Error(`Flag does not accept a value: --${name}`);
       options[name] = true; continue;
     }
@@ -90,7 +90,7 @@ export async function main(args = process.argv.slice(2)) {
     setup: ['tools', 'skills', 'yes'], upgrade: [], init: ['project', 'tools', 'skills', 'yes', 'dry-run', 'conflict'],
     plan: ['project', 'tools', 'skills', 'dry-run', 'conflict'], sync: ['project', 'tools', 'skills', 'yes', 'dry-run', 'conflict'],
     doctor: ['project'], config: ['project'], defaults: ['tools', 'skills'], catalog: [], agents: [],
-    asset: sub === 'edit' ? ['file','type'] : ['type'], web: ['project', 'port'],
+    asset: sub === 'edit' ? ['file','type'] : sub === 'import' ? ['type','replace'] : ['type'], web: ['project', 'port'],
     memory: { bind: ['project','project-id'], get: ['project','scope'], recall: ['project','scene','query','budget'], put: ['project','scope','file','revision'], save: ['project','scope','file','revision'], delete: ['project','scope','revision'] }[sub],
   }[command];
   if (!allowed) throw Error(`Unknown command: ${command}`);
@@ -143,7 +143,7 @@ export async function main(args = process.argv.slice(2)) {
     console.log(json(chosen)); return;
   }
   if (command === 'asset') {
-    if (sub === 'import' && name) { console.log(json(await importAsset(home, name, options.type || 'skills'))); return; }
+    if (sub === 'import' && name) { console.log(json(await importAsset(home, name, options.type || 'skills', { replace: Boolean(options.replace) }))); return; }
     if (sub === 'edit' && name && options.file) {
       const old = (await allAssets(home)).find(s => s.name === (!options.type || options.type === 'skills' ? canonicalName(name) : name) && s.type === (options.type || 'skills'));
       if (!old) throw Error('Unknown asset');
