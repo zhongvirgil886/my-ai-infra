@@ -56,7 +56,7 @@ my-ai-infra web --project "/path/to/my repo" --home "/path/to/personal assets" -
 
 工具与 Skill 列表不能为空。名称与兼容别名以 `catalog` 输出为准；`my-create-code` 等旧名解析到 canonical 名，不重复安装。未知配置字段会被拒绝。
 
-仅设置工具偏好时保留自动发现模式，defaults.json 用 `allSkills: true` 记录；显式设置 `--skills` 或在 Web 保存 Skill 选择时固定清单。旧 defaults.json 没有该标记时按固定清单保留，`setup` 与 `defaults --tools` 只更新工具。尚无 defaults.json 时，首次 `setup` 或 `defaults --tools` 写入自动发现模式。
+仅设置工具偏好时保留自动发现模式，defaults.json 用 `allSkills: true` 记录；显式设置 `--skills` 或在 Web 保存 Skill 选择时固定清单。旧 defaults.json 没有该标记时按固定清单保留，`setup` 与 `defaults --tools` 只更新工具。尚无 defaults.json 时，首次 `setup` 或 `defaults --tools` 写入自动发现模式。`setup` 输出的 `defaults.mode` 显示保存后的模式：`allSkills` 为自动发现，`fixed` 为固定清单；`defaults.skills` 为本次选中的清单。
 
 ## 维护个人资产
 

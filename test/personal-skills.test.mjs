@@ -129,12 +129,14 @@ test('setup keeps a fixed default Skill list and only updates tools', async t =>
   const cli = path.join(PACKAGE, 'bin/my-ai-infra.mjs'), toolHome = path.join(root, 'user home');
   await fs.mkdir(toolHome);
   const env = { ...process.env, HOME: toolHome, USERPROFILE: toolHome, MY_AI_INFRA_HOME: home };
-  await exec(process.execPath, [cli, 'setup', '--tools', 'codex', '--yes'], { env });
+  const first = JSON.parse((await exec(process.execPath, [cli, 'setup', '--tools', 'codex', '--yes'], { env })).stdout);
   assert.equal(JSON.parse(await read(home, 'defaults.json')).allSkills, true);
+  assert.equal(first.defaults.mode, 'allSkills');
   await exec(process.execPath, [cli, 'defaults', '--skills', 'my-ai-infra,my-review-code'], { env });
   await importAsset(home, source);
-  await exec(process.execPath, [cli, 'setup', '--tools', 'claudecode,codex', '--yes'], { env });
+  const second = JSON.parse((await exec(process.execPath, [cli, 'setup', '--tools', 'claudecode,codex', '--yes'], { env })).stdout);
   assert.deepEqual(JSON.parse(await read(home, 'defaults.json')), { version: 1, tools: ['claudecode', 'codex'], skills: ['my-ai-infra', 'my-review-code'] });
+  assert.deepEqual(second.defaults, { mode: 'fixed', tools: ['claudecode', 'codex'], skills: ['my-ai-infra', 'my-review-code'] });
   // A pre-flag defaults file is a fixed list too.
   await write(home, 'defaults.json', json({ version: 1, tools: ['codex'], skills: ['team-skill'] }));
   await exec(process.execPath, [cli, 'setup', '--tools', 'claudecode', '--yes'], { env });

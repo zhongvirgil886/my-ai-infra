@@ -131,8 +131,10 @@ export async function main(args = process.argv.slice(2)) {
   if (command === 'setup') {
     const base = await defaults(home);
     const chosen = await config(await preferences(base, options, true, home), home);
-    console.log(json(await setup(home, chosen.tools, undefined, chosen.skills)));
-    await locked(home, () => writeDefaults(home, chosen, { selectSkills: Boolean(options.skills) }));
+    const result = await setup(home, chosen.tools, undefined, chosen.skills);
+    // Report which default mode new projects will use, so a switch to allSkills is visible.
+    const saved = await locked(home, () => writeDefaults(home, chosen, { selectSkills: Boolean(options.skills) }));
+    console.log(json({ ...result, defaults: saved }));
     return;
   }
   if (command === 'defaults') {

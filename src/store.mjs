@@ -66,6 +66,7 @@ export async function writeDefaults(home, chosen, { selectSkills = true } = {}) 
   const previous = await readJSON(home, 'defaults.json', null);
   const allSkills = !selectSkills && (!previous || previous.allSkills === true);
   await write(home, 'defaults.json', json({ ...chosen, ...(allSkills ? { allSkills: true } : {}) }));
+  return { mode: allSkills ? 'allSkills' : 'fixed', tools: chosen.tools, skills: chosen.skills };
 }
 async function bundleState(home) {
   const state = await readJSON(home, 'bundle-state.json', { version: 1, files: {} });
