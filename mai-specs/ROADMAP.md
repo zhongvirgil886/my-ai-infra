@@ -4,6 +4,7 @@
 
 | 需求 | 标题 | 优先级 | 说明 |
 |---|---|---|---|
+| 990 | [Windows 链接与共享规则兼容](990-windows-link-compat/BRIEF.md) | P1 | 规格：simple；Windows 上 init/doctor 正确识别 mai 自建链接与已有 CLAUDE.md→AGENTS.md 共享关系 |
 | 989 | [项目规则正文纳入版本管理](989-rules-source-tracking/BRIEF.md) | P1 | 规格：standard；装配的 .gitignore 受管区块不再忽略 .agents/rules/，已有项目同步时移除旧规则 |
 
 ## 进行中
